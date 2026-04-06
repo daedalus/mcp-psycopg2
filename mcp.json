@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mcp-psycopg2": {
+      "command": "mcp-psycopg2",
+      "env": {}
+    }
+  }
+}
