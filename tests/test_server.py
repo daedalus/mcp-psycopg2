@@ -85,11 +85,15 @@ class TestConnect:
 class TestCloseConnection:
     """Tests for close_connection function."""
 
-    def test_close_connection_success(self, mock_conn):
+    def test_close_connection_success(self, mock_conn, mock_cursor):
         _active_connections["test_conn"] = mock_conn
+        _active_cursors["cursor_test_conn_1"] = mock_cursor
+        _active_cursors["cursor_test_conn_2"] = mock_cursor
         result = close_connection("test_conn")
         assert result == "Connection closed"
         assert "test_conn" not in _active_connections
+        assert "cursor_test_conn_1" not in _active_cursors
+        assert "cursor_test_conn_2" not in _active_cursors
 
     def test_close_connection_not_found(self):
         with pytest.raises(Exception) as exc_info:
@@ -122,11 +126,21 @@ class TestTransaction:
         result = begin_transaction("test_conn")
         assert "started" in result.lower()
 
+    def test_begin_transaction_not_found(self):
+        with pytest.raises(Exception) as exc_info:
+            begin_transaction("nonexistent")
+        assert "not found" in str(exc_info.value)
+
     def test_commit_transaction(self, mock_conn):
         _active_connections["test_conn"] = mock_conn
         result = commit_transaction("test_conn")
         assert "committed" in result.lower()
         mock_conn.commit.assert_called_once()
+
+    def test_commit_transaction_not_found(self):
+        with pytest.raises(Exception) as exc_info:
+            commit_transaction("nonexistent")
+        assert "not found" in str(exc_info.value)
 
     def test_rollback_transaction(self, mock_conn):
         _active_connections["test_conn"] = mock_conn
@@ -134,13 +148,42 @@ class TestTransaction:
         assert "rolled back" in result.lower()
         mock_conn.rollback.assert_called_once()
 
+    def test_rollback_transaction_not_found(self):
+        with pytest.raises(Exception) as exc_info:
+            rollback_transaction("nonexistent")
+        assert "not found" in str(exc_info.value)
+
 
 class TestSetIsolationLevel:
     """Tests for set_isolation_level function."""
 
+    def test_set_isolation_level_autocommit(self, mock_conn):
+        _active_connections["test_conn"] = mock_conn
+        result = set_isolation_level("AUTOCOMMIT", "test_conn")
+        assert "set" in result.lower()
+        mock_conn.set_isolation_level.assert_called_once()
+
     def test_set_isolation_level_read_committed(self, mock_conn):
         _active_connections["test_conn"] = mock_conn
         result = set_isolation_level("READ_COMMITTED", "test_conn")
+        assert "set" in result.lower()
+        mock_conn.set_isolation_level.assert_called_once()
+
+    def test_set_isolation_level_repeatable_read(self, mock_conn):
+        _active_connections["test_conn"] = mock_conn
+        result = set_isolation_level("REPEATABLE_READ", "test_conn")
+        assert "set" in result.lower()
+        mock_conn.set_isolation_level.assert_called_once()
+
+    def test_set_isolation_level_serializable(self, mock_conn):
+        _active_connections["test_conn"] = mock_conn
+        result = set_isolation_level("SERIALIZABLE", "test_conn")
+        assert "set" in result.lower()
+        mock_conn.set_isolation_level.assert_called_once()
+
+    def test_set_isolation_level_default(self, mock_conn):
+        _active_connections["test_conn"] = mock_conn
+        result = set_isolation_level("DEFAULT", "test_conn")
         assert "set" in result.lower()
         mock_conn.set_isolation_level.assert_called_once()
 
@@ -149,6 +192,11 @@ class TestSetIsolationLevel:
         with pytest.raises(Exception) as exc_info:
             set_isolation_level("INVALID_LEVEL", "test_conn")
         assert "Invalid" in str(exc_info.value)
+
+    def test_set_isolation_level_not_found(self):
+        with pytest.raises(Exception) as exc_info:
+            set_isolation_level("READ_COMMITTED", "nonexistent")
+        assert "not found" in str(exc_info.value)
 
 
 class TestCursor:
@@ -161,6 +209,12 @@ class TestCursor:
         assert result.startswith("cursor_")
         assert len(_active_cursors) == 1
 
+    def test_create_cursor_with_name(self, mock_conn, mock_cursor):
+        _active_connections["test_conn"] = mock_conn
+        mock_conn.cursor.return_value = mock_cursor
+        result = create_cursor(cursor_name="my_cursor", connection_id="test_conn")
+        assert result.startswith("cursor_")
+
     def test_close_cursor(self, mock_cursor):
         cursor_id = "test_cursor"
         _active_cursors[cursor_id] = mock_cursor
@@ -171,6 +225,11 @@ class TestCursor:
     def test_close_cursor_not_found(self):
         with pytest.raises(Exception) as exc_info:
             close_cursor("nonexistent")
+        assert "not found" in str(exc_info.value)
+
+    def test_execute_query_connection_not_found(self):
+        with pytest.raises(Exception) as exc_info:
+            execute_query("SELECT 1", connection_id="nonexistent")
         assert "not found" in str(exc_info.value)
 
 
@@ -249,6 +308,11 @@ class TestFetch:
 
         assert result is None
 
+    def test_fetch_one_not_found(self):
+        with pytest.raises(Exception) as exc_info:
+            fetch_one("nonexistent")
+        assert "not found" in str(exc_info.value)
+
     def test_fetch_many(self, mock_cursor):
         cursor_id = "test_cursor"
         _active_cursors[cursor_id] = mock_cursor
@@ -258,6 +322,11 @@ class TestFetch:
 
         assert len(result) == 2
 
+    def test_fetch_many_not_found(self):
+        with pytest.raises(Exception) as exc_info:
+            fetch_many("nonexistent", 10)
+        assert "not found" in str(exc_info.value)
+
     def test_fetch_all(self, mock_cursor):
         cursor_id = "test_cursor"
         _active_cursors[cursor_id] = mock_cursor
@@ -266,6 +335,11 @@ class TestFetch:
         result = fetch_all(cursor_id)
 
         assert len(result) == 2
+
+    def test_fetch_all_not_found(self):
+        with pytest.raises(Exception) as exc_info:
+            fetch_all("nonexistent")
+        assert "not found" in str(exc_info.value)
 
 
 class TestQuoteIdentifier:
@@ -450,6 +524,26 @@ class TestLargeObject:
 
         assert result["bytes_written"] == 5
 
+    def test_create_large_object_not_found(self):
+        with pytest.raises(Exception) as exc_info:
+            create_large_object(connection_id="nonexistent")
+        assert "not found" in str(exc_info.value)
+
+    def test_read_large_object_not_found(self):
+        with pytest.raises(Exception) as exc_info:
+            read_large_object(12345, connection_id="nonexistent")
+        assert "not found" in str(exc_info.value)
+
+    def test_write_large_object_not_found(self):
+        with pytest.raises(Exception) as exc_info:
+            write_large_object("data", connection_id="nonexistent")
+        assert "not found" in str(exc_info.value)
+
+    def test_cancel_query_not_found(self):
+        with pytest.raises(Exception) as exc_info:
+            cancel_query("nonexistent")
+        assert "not found" in str(exc_info.value)
+
 
 class TestCancel:
     """Tests for cancel function."""
@@ -475,6 +569,11 @@ class TestMogrify:
 
         assert "value" in result.lower()
 
+    def test_mogrify_not_found(self):
+        with pytest.raises(Exception) as exc_info:
+            mogrify("SELECT 1", connection_id="nonexistent")
+        assert "not found" in str(exc_info.value)
+
 
 class TestSetSession:
     """Tests for set_session function."""
@@ -486,6 +585,11 @@ class TestSetSession:
 
         assert "set" in result.lower()
         mock_conn.set_session.assert_called_once()
+
+    def test_set_session_not_found(self):
+        with pytest.raises(Exception) as exc_info:
+            set_session(readonly=True, connection_id="nonexistent")
+        assert "not found" in str(exc_info.value)
 
 
 class TestList:

@@ -76,7 +76,7 @@ def close_connection(connection_id: str = "default") -> str:
         conn = _active_connections.pop(connection_id)
         conn.close()
         for cursor_id in list(_active_cursors.keys()):
-            if cursor_id.startswith(connection_id):
+            if f"cursor_{connection_id}_" in cursor_id:
                 del _active_cursors[cursor_id]
         return "Connection closed"
     raise Exception(f"Connection {connection_id} not found")
